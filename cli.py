@@ -13,7 +13,9 @@ from codexsaver.installer import doctor, install_config, install_global_config
 
 def main(argv: list[str] | None = None) -> int:
     argv = argv or sys.argv[1:]
-    if argv and argv[0] in {"install", "doctor", "delegate", "auth"}:
+    if not argv or argv[0] in {"-h", "--help"}:
+        return _run_subcommand(["--help"])
+    if argv and argv[0] in {"install", "doctor", "delegate", "work-packet", "auth"}:
         return _run_subcommand(argv)
     return _run_delegate(argv)
 
@@ -91,6 +93,23 @@ def _run_subcommand(argv: list[str]) -> int:
     delegate_parser.add_argument("--workspace", default=".")
     delegate_parser.add_argument("--dry-run", action="store_true")
 
+    work_packet_parser = subparsers.add_parser(
+        "work-packet",
+        help="Delegate a bounded v2 work packet with allowed files and checks.",
+    )
+    work_packet_parser.add_argument("goal")
+    work_packet_parser.add_argument("--files", nargs="*", default=[])
+    work_packet_parser.add_argument("--allowed-file", action="append", default=[])
+    work_packet_parser.add_argument("--forbidden-path", action="append", default=[])
+    work_packet_parser.add_argument("--acceptance", action="append", default=[])
+    work_packet_parser.add_argument("--constraint", action="append", default=[])
+    work_packet_parser.add_argument("--allowed-command", action="append", default=[])
+    work_packet_parser.add_argument("--workspace", default=".")
+    work_packet_parser.add_argument("--delegation-level", default="bounded_impl")
+    work_packet_parser.add_argument("--max-iterations", type=int, default=3)
+    work_packet_parser.add_argument("--max-diff-lines", type=int, default=300)
+    work_packet_parser.add_argument("--dry-run", action="store_true")
+
     args = parser.parse_args(argv)
 
     if args.command == "install":
@@ -165,6 +184,24 @@ def _run_subcommand(argv: list[str]) -> int:
             ),
             "next_step": "Run `python cli.py doctor` to verify CodexSaver can see the saved key.",
         }, ensure_ascii=False, indent=2))
+        return 0
+
+    if args.command == "work-packet":
+        result = CodexSaverEngine().delegate_work_packet({
+            "goal": args.goal,
+            "files": args.files,
+            "constraints": args.constraint,
+            "acceptance_criteria": args.acceptance,
+            "allowed_files": args.allowed_file,
+            "forbidden_paths": args.forbidden_path,
+            "allowed_commands": args.allowed_command,
+            "workspace": args.workspace,
+            "delegation_level": args.delegation_level,
+            "max_iterations": args.max_iterations,
+            "max_diff_lines": args.max_diff_lines,
+            "dry_run": args.dry_run,
+        })
+        print(json.dumps(result, ensure_ascii=False, indent=2))
         return 0
 
     result = CodexSaverEngine().delegate_task({

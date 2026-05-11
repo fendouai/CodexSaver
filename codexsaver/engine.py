@@ -7,9 +7,10 @@ from .context import ContextPacker
 from .cost import CostEstimator
 from .config import resolve_provider_config
 from .provider import ProviderClient, ProviderError
-from .router import Router
-from .schema import DelegateTaskInput, WorkerTask, to_dict
+from .router import PROTECTED_PATH_KEYWORDS, Router
+from .schema import DelegateTaskInput, WorkPacketInput, WorkerTask, to_dict
 from .verifier import Verifier
+from .work_packet import WorkPacketRuntime
 
 
 DEFAULT_CONSTRAINTS = [
@@ -167,6 +168,143 @@ class CodexSaverEngine:
             "estimated_savings_percent": estimated_savings_percent,
             "next_step": next_step,
         }
+
+    def delegate_work_packet(self, input_data: Dict[str, Any]) -> Dict[str, Any]:
+        provider = resolve_provider_config()
+        goal = input_data["goal"]
+        files = input_data.get("files", [])
+        decision = self.router.decide(goal, files)
+        if decision.route == "codex" and input_data.get("delegation_level") not in {"research"}:
+            return {
+                "route": "codex",
+                "status": "needs_codex",
+                "decision": to_dict(decision),
+                "provider": _provider_payload(provider),
+                "message": "CodexSaver recommends Codex handle this work packet directly.",
+                "interaction": self._interaction_payload(
+                    decision=to_dict(decision),
+                    route="codex",
+                    status="needs_codex",
+                    estimated_savings_percent=0,
+                    mode="codex_takeover",
+                    detail="Protected domain or ambiguous work packet detected before delegation.",
+                ),
+            }
+
+        packet = WorkPacketInput(
+            goal=goal,
+            files=files,
+            constraints=input_data.get("constraints", []),
+            acceptance_criteria=input_data.get("acceptance_criteria", []),
+            allowed_files=input_data.get("allowed_files") or files,
+            forbidden_paths=input_data.get("forbidden_paths") or DEFAULT_FORBIDDEN_PATHS,
+            allowed_commands=input_data.get("allowed_commands", []),
+            workspace=input_data.get("workspace", "."),
+            delegation_level=input_data.get("delegation_level", "bounded_impl"),
+            max_iterations=int(input_data.get("max_iterations", 3)),
+            max_diff_lines=int(input_data.get("max_diff_lines", 300)),
+            max_files=int(input_data.get("max_files", 8)),
+            max_chars_per_file=int(input_data.get("max_chars_per_file", 24_000)),
+            max_total_chars=int(input_data.get("max_total_chars", 120_000)),
+            dry_run=bool(input_data.get("dry_run", False)),
+        )
+
+        if packet.delegation_level != "research" and not packet.allowed_files:
+            return {
+                "route": "codex",
+                "status": "needs_codex",
+                "decision": to_dict(decision),
+                "provider": _provider_payload(provider),
+                "message": "delegate_work_packet requires allowed_files for write-capable delegation.",
+                "interaction": self._interaction_payload(
+                    decision=to_dict(decision),
+                    route="codex",
+                    status="needs_codex",
+                    estimated_savings_percent=0,
+                    mode="codex_takeover",
+                    detail="No allowed_files were provided for a write-capable work packet.",
+                ),
+            }
+
+        estimate_task = WorkerTask(
+            instruction=packet.goal,
+            task_type=decision.task_type,
+            risk=decision.risk,
+            constraints=packet.constraints,
+            workspace=str(Path(packet.workspace).resolve()),
+            files=[],
+        )
+        estimated_savings = self.cost.estimate_savings_percent(estimate_task, delegated=True)
+
+        if packet.dry_run:
+            return {
+                "route": "deepseek",
+                "status": "dry_run",
+                "decision": to_dict(decision),
+                "provider": _provider_payload(provider),
+                "estimated_savings_percent": estimated_savings,
+                "work_packet_preview": to_dict(packet),
+                "interaction": self._interaction_payload(
+                    decision=to_dict(decision),
+                    route="deepseek",
+                    status="dry_run",
+                    estimated_savings_percent=estimated_savings,
+                    mode="preview",
+                    detail="Dry-run work packet preview only. No external model call was made.",
+                ),
+            }
+
+        try:
+            runtime = WorkPacketRuntime(ProviderClient(provider=provider.name))
+            worker_result = runtime.run(packet)
+        except (ProviderError, ValueError) as e:
+            return {
+                "route": "codex",
+                "status": "failed",
+                "decision": to_dict(decision),
+                "provider": _provider_payload(provider),
+                "estimated_savings_percent": 0,
+                "message": f"Worker runtime failed; Codex should take over. Error: {e}",
+                "interaction": self._interaction_payload(
+                    decision=to_dict(decision),
+                    route="codex",
+                    status="failed",
+                    estimated_savings_percent=0,
+                    mode="codex_takeover",
+                    detail=f"Delegation failed and control returned to Codex: {e}",
+                ),
+            }
+
+        worker_result["decision"] = to_dict(decision)
+        worker_result["provider"] = _provider_payload(provider)
+        worker_result["estimated_savings_percent"] = (
+            100 if worker_result.get("preflight_satisfied")
+            else estimated_savings if worker_result["status"] == "success"
+            else 0
+        )
+        worker_result["codex_instruction"] = (
+            "Review the sandboxed patch and evidence. Apply only if the diff is safe."
+        )
+        worker_result["interaction"] = self._interaction_payload(
+            decision=to_dict(decision),
+            route=worker_result["route"],
+            status=worker_result["status"],
+            estimated_savings_percent=worker_result["estimated_savings_percent"],
+            mode="bounded_implementation" if worker_result["status"] == "success" else "codex_takeover",
+            detail=worker_result["verification"]["reason"],
+        )
+        return worker_result
+
+
+DEFAULT_FORBIDDEN_PATHS = [
+    ".github/**",
+    "deploy/**",
+    "infra/**",
+    "terraform/**",
+    ".env*",
+    "*secret*",
+    *[f"*{keyword}*" for keyword in PROTECTED_PATH_KEYWORDS],
+]
 
 
 def _provider_payload(provider) -> Dict[str, Any]:

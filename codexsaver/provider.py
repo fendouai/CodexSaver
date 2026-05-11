@@ -78,17 +78,20 @@ class ProviderClient:
         return self.config.name
 
     def complete_task(self, task: WorkerTask) -> Dict[str, Any]:
+        return self.complete_json(SYSTEM_PROMPT, to_dict(task))
+
+    def complete_json(self, system_prompt: str, payload: Dict[str, Any]) -> Dict[str, Any]:
         if self.config.api_style == "anthropic":
-            return self._complete_anthropic(task)
-        payload = {
+            return self._complete_anthropic_json(system_prompt, payload)
+        request_payload = {
             "model": self.config.model,
             "messages": [
-                {"role": "system", "content": SYSTEM_PROMPT},
-                {"role": "user", "content": json.dumps(to_dict(task), ensure_ascii=False)},
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": json.dumps(payload, ensure_ascii=False)},
             ],
             "temperature": 0.2,
         }
-        body = self._post(payload)
+        body = self._post(request_payload)
         try:
             data = json.loads(body)
             content = data["choices"][0]["message"]["content"]
@@ -114,14 +117,14 @@ class ProviderClient:
         except urllib.error.URLError as e:
             raise ProviderError(f"{self.config.name} connection failed: {e}") from e
 
-    def _complete_anthropic(self, task: WorkerTask) -> Dict[str, Any]:
+    def _complete_anthropic_json(self, system_prompt: str, payload: Dict[str, Any]) -> Dict[str, Any]:
         payload = {
             "model": self.config.model,
             "max_tokens": 4096,
             "temperature": 0.2,
-            "system": SYSTEM_PROMPT,
+            "system": system_prompt,
             "messages": [
-                {"role": "user", "content": json.dumps(to_dict(task), ensure_ascii=False)}
+                {"role": "user", "content": json.dumps(payload, ensure_ascii=False)}
             ],
         }
         body = self._post(payload)

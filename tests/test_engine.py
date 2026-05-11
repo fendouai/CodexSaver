@@ -201,3 +201,31 @@ class TestCodexSaverEngine:
 
             assert result["status"] == "success"
             assert result["verification"]["executed_commands"][0]["exit_code"] == 0
+
+    def test_delegate_work_packet_dry_run(self):
+        result = self.engine.delegate_work_packet({
+            "goal": "add unit tests for utils",
+            "files": ["tests/test_utils.py"],
+            "allowed_files": ["tests/test_utils.py"],
+            "dry_run": True,
+        })
+        assert result["status"] == "dry_run"
+        assert result["route"] == "deepseek"
+        assert result["work_packet_preview"]["allowed_files"] == ["tests/test_utils.py"]
+
+    def test_delegate_work_packet_routes_high_risk_to_codex(self):
+        result = self.engine.delegate_work_packet({
+            "goal": "fix security vulnerability",
+            "files": ["src/auth/login.go"],
+        })
+        assert result["route"] == "codex"
+        assert result["status"] == "needs_codex"
+
+    def test_delegate_work_packet_requires_allowed_files_for_writes(self):
+        result = self.engine.delegate_work_packet({
+            "goal": "add unit tests for utils",
+            "files": [],
+        })
+        assert result["route"] == "codex"
+        assert result["status"] == "needs_codex"
+        assert "allowed_files" in result["message"]

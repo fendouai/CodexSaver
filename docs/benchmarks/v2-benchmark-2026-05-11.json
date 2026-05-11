@@ -1,0 +1,235 @@
+[
+  {
+    "name": "Create v2 smoke doc",
+    "kind": "docs",
+    "codex_only": {
+      "cost_index": 1.0,
+      "effect": "counterfactual_baseline",
+      "notes": "Codex-only is the normalized baseline; it was not executed as a separate model run."
+    },
+    "codexsaver": {
+      "route": "deepseek",
+      "status": "success",
+      "execution_mode": "worker",
+      "cost_index": 0.55,
+      "estimated_savings_percent": 45,
+      "effect_score": 1.0,
+      "latency_seconds": 2.36,
+      "iterations": 1,
+      "diff_lines": 1,
+      "checks": [
+        {
+          "command": "python -c \"from pathlib import Path; assert Path('docs/v2-smoke.md').exists()\"",
+          "exit_code": 0,
+          "stdout": "",
+          "stderr": ""
+        }
+      ],
+      "summary": "Created docs/v2-smoke.md with one sentence.",
+      "verification": {
+        "ok": true,
+        "fallback_to_codex": false,
+        "reason": "Work packet passed sandbox verification.",
+        "warnings": [],
+        "executed_commands": [
+          {
+            "command": "python -c \"from pathlib import Path; assert Path('docs/v2-smoke.md').exists()\"",
+            "exit_code": 0,
+            "stdout": "",
+            "stderr": ""
+          }
+        ],
+        "changed_files": [
+          "docs/v2-smoke.md"
+        ],
+        "diff_lines": 1
+      }
+    }
+  },
+  {
+    "name": "Add generated cost test",
+    "kind": "tests",
+    "codex_only": {
+      "cost_index": 1.0,
+      "effect": "counterfactual_baseline",
+      "notes": "Codex-only is the normalized baseline; it was not executed as a separate model run."
+    },
+    "codexsaver": {
+      "route": "deepseek",
+      "status": "success",
+      "execution_mode": "worker",
+      "cost_index": 0.55,
+      "estimated_savings_percent": 45,
+      "effect_score": 1.0,
+      "latency_seconds": 9.3,
+      "iterations": 2,
+      "diff_lines": 19,
+      "checks": [
+        {
+          "command": "python -m pytest tests/test_cost_generated.py -q",
+          "exit_code": 0,
+          "stdout": ".                                                                        [100%]\n1 passed in 0.01s\n",
+          "stderr": ""
+        }
+      ],
+      "summary": "Create tests/test_cost_generated.py with a pytest test proving CostEstimator returns 45 for a tiny delegated WorkerTask.",
+      "verification": {
+        "ok": true,
+        "fallback_to_codex": false,
+        "reason": "Work packet passed sandbox verification.",
+        "warnings": [],
+        "executed_commands": [
+          {
+            "command": "python -m pytest tests/test_cost_generated.py -q",
+            "exit_code": 0,
+            "stdout": ".                                                                        [100%]\n1 passed in 0.01s\n",
+            "stderr": ""
+          }
+        ],
+        "changed_files": [
+          "tests/test_cost_generated.py"
+        ],
+        "diff_lines": 19
+      }
+    }
+  },
+  {
+    "name": "Add package version metadata",
+    "kind": "small_code",
+    "codex_only": {
+      "cost_index": 1.0,
+      "effect": "counterfactual_baseline",
+      "notes": "Codex-only is the normalized baseline; it was not executed as a separate model run."
+    },
+    "codexsaver": {
+      "route": "deepseek",
+      "status": "success",
+      "execution_mode": "preflight",
+      "cost_index": 0.0,
+      "estimated_savings_percent": 100,
+      "effect_score": 1.0,
+      "latency_seconds": 0.03,
+      "iterations": 0,
+      "diff_lines": 0,
+      "checks": [
+        {
+          "command": "python -c \"import codexsaver; assert codexsaver.__version__ == '0.2.0'\"",
+          "exit_code": 0,
+          "stdout": "",
+          "stderr": ""
+        }
+      ],
+      "summary": "Work packet already satisfied before delegation.",
+      "verification": {
+        "ok": true,
+        "fallback_to_codex": false,
+        "reason": "Work packet already satisfied before delegation.",
+        "warnings": [],
+        "executed_commands": [
+          {
+            "command": "python -c \"import codexsaver; assert codexsaver.__version__ == '0.2.0'\"",
+            "exit_code": 0,
+            "stdout": "",
+            "stderr": ""
+          }
+        ],
+        "changed_files": [],
+        "diff_lines": 0
+      }
+    }
+  },
+  {
+    "name": "Document work-packet CLI",
+    "kind": "docs",
+    "codex_only": {
+      "cost_index": 1.0,
+      "effect": "counterfactual_baseline",
+      "notes": "Codex-only is the normalized baseline; it was not executed as a separate model run."
+    },
+    "codexsaver": {
+      "route": "deepseek",
+      "status": "success",
+      "execution_mode": "worker",
+      "cost_index": 0.55,
+      "estimated_savings_percent": 45,
+      "effect_score": 1.0,
+      "latency_seconds": 3.86,
+      "iterations": 1,
+      "diff_lines": 1,
+      "checks": [
+        {
+          "command": "python -c \"from pathlib import Path; assert 'work-packet' in Path('README.md').read_text()\"",
+          "exit_code": 0,
+          "stdout": "",
+          "stderr": ""
+        }
+      ],
+      "summary": "Added bullet to Commands section mentioning python cli.py work-packet for bounded v2 delegation.",
+      "verification": {
+        "ok": true,
+        "fallback_to_codex": false,
+        "reason": "Work packet passed sandbox verification.",
+        "warnings": [],
+        "executed_commands": [
+          {
+            "command": "python -c \"from pathlib import Path; assert 'work-packet' in Path('README.md').read_text()\"",
+            "exit_code": 0,
+            "stdout": "",
+            "stderr": ""
+          }
+        ],
+        "changed_files": [
+          "README.md"
+        ],
+        "diff_lines": 1
+      }
+    }
+  },
+  {
+    "name": "Create Chinese v2 note",
+    "kind": "zh_docs",
+    "codex_only": {
+      "cost_index": 1.0,
+      "effect": "counterfactual_baseline",
+      "notes": "Codex-only is the normalized baseline; it was not executed as a separate model run."
+    },
+    "codexsaver": {
+      "route": "deepseek",
+      "status": "success",
+      "execution_mode": "worker",
+      "cost_index": 0.55,
+      "estimated_savings_percent": 45,
+      "effect_score": 1.0,
+      "latency_seconds": 2.68,
+      "iterations": 1,
+      "diff_lines": 1,
+      "checks": [
+        {
+          "command": "python -c \"from pathlib import Path; assert Path('docs/v2-smoke-zh.md').exists()\"",
+          "exit_code": 0,
+          "stdout": "",
+          "stderr": ""
+        }
+      ],
+      "summary": "Created docs/v2-smoke-zh.md with one Chinese sentence.",
+      "verification": {
+        "ok": true,
+        "fallback_to_codex": false,
+        "reason": "Work packet passed sandbox verification.",
+        "warnings": [],
+        "executed_commands": [
+          {
+            "command": "python -c \"from pathlib import Path; assert Path('docs/v2-smoke-zh.md').exists()\"",
+            "exit_code": 0,
+            "stdout": "",
+            "stderr": ""
+          }
+        ],
+        "changed_files": [
+          "docs/v2-smoke-zh.md"
+        ],
+        "diff_lines": 1
+      }
+    }
+  }
+]

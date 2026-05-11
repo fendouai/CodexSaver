@@ -16,6 +16,7 @@ TaskType = Literal[
     "review_draft",
     "unknown",
 ]
+DelegationLevel = Literal["research", "draft_patch", "bounded_impl", "repair_loop"]
 
 
 @dataclass
@@ -53,6 +54,42 @@ class WorkerTask:
     constraints: List[str]
     workspace: str
     files: List[FileContext]
+
+
+@dataclass
+class WorkPacketInput:
+    goal: str
+    files: List[str]
+    constraints: List[str]
+    acceptance_criteria: List[str]
+    allowed_files: List[str]
+    forbidden_paths: List[str]
+    allowed_commands: List[str]
+    workspace: str = "."
+    delegation_level: DelegationLevel = "bounded_impl"
+    max_iterations: int = 3
+    max_diff_lines: int = 300
+    max_files: int = 8
+    max_chars_per_file: int = 24_000
+    max_total_chars: int = 120_000
+    dry_run: bool = False
+
+
+@dataclass
+class WorkerAction:
+    action: str
+    args: Dict[str, Any]
+
+
+@dataclass
+class WorkPacketVerification:
+    ok: bool
+    fallback_to_codex: bool
+    reason: str
+    warnings: List[str]
+    executed_commands: List[Dict[str, Any]]
+    changed_files: List[str]
+    diff_lines: int
 
 
 @dataclass

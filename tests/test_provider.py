@@ -50,6 +50,27 @@ def test_provider_client_posts_chat_completion(monkeypatch):
     assert payload["messages"][0]["role"] == "system"
 
 
+def test_provider_client_posts_custom_json(monkeypatch):
+    monkeypatch.setenv("CODEXSAVER_PROVIDER", "openai")
+    monkeypatch.setenv("CODEXSAVER_API_KEY", "sk-test")
+    response = MagicMock()
+    response.read.return_value = json.dumps({
+        "choices": [{
+            "message": {"content": json.dumps({"action": "finish", "args": {}})}
+        }]
+    }).encode("utf-8")
+    response.__enter__.return_value = response
+
+    with patch("urllib.request.urlopen", return_value=response) as urlopen:
+        client = ProviderClient()
+        result = client.complete_json("system", {"hello": "world"})
+
+    assert result["action"] == "finish"
+    payload = json.loads(urlopen.call_args[0][0].data.decode("utf-8"))
+    assert payload["messages"][0]["content"] == "system"
+    assert json.loads(payload["messages"][1]["content"]) == {"hello": "world"}
+
+
 def test_provider_client_posts_anthropic_messages(monkeypatch):
     monkeypatch.setenv("CODEXSAVER_PROVIDER", "anthropic")
     monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant")

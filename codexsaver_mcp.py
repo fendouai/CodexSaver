@@ -20,7 +20,7 @@ def respond(id_: Any, result: Any = None, error: Any = None) -> None:
     print(json.dumps(msg, ensure_ascii=False), flush=True)
 
 
-def tool_schema() -> Dict[str, Any]:
+def delegate_task_schema() -> Dict[str, Any]:
     return {
         "name": "delegate_task",
         "description": (
@@ -52,6 +52,42 @@ def tool_schema() -> Dict[str, Any]:
     }
 
 
+def delegate_work_packet_schema() -> Dict[str, Any]:
+    return {
+        "name": "delegate_work_packet",
+        "description": (
+            "Delegate a bounded v2 coding work packet to a configured worker model. "
+            "Use when the task has clear scope, allowed files, acceptance criteria, "
+            "and allowlisted checks. The worker may inspect files, propose patches, "
+            "run allowlisted checks in a sandbox, and repair within max_iterations."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "goal": {"type": "string", "description": "The bounded coding goal."},
+                "files": {"type": "array", "items": {"type": "string"},
+                          "description": "Initial files to include as context."},
+                "allowed_files": {"type": "array", "items": {"type": "string"},
+                                  "description": "Files or glob patterns the patch may touch."},
+                "forbidden_paths": {"type": "array", "items": {"type": "string"},
+                                    "description": "Forbidden paths or glob patterns."},
+                "acceptance_criteria": {"type": "array", "items": {"type": "string"},
+                                        "description": "Evidence the work must satisfy."},
+                "constraints": {"type": "array", "items": {"type": "string"}},
+                "allowed_commands": {"type": "array", "items": {"type": "string"},
+                                     "description": "Exact commands the worker may run in the sandbox."},
+                "workspace": {"type": "string"},
+                "delegation_level": {"type": "string",
+                                     "enum": ["research", "draft_patch", "bounded_impl", "repair_loop"]},
+                "max_iterations": {"type": "integer", "minimum": 1, "maximum": 5},
+                "max_diff_lines": {"type": "integer", "minimum": 1},
+                "dry_run": {"type": "boolean"}
+            },
+            "required": ["goal"]
+        }
+    }
+
+
 def handle(request: Dict[str, Any], engine: CodexSaverEngine) -> None:
     method = request.get("method")
     id_ = request.get("id")
@@ -62,18 +98,23 @@ def handle(request: Dict[str, Any], engine: CodexSaverEngine) -> None:
     if method == "notifications/initialized":
         return
     if method == "tools/list":
-        respond(id_, {"tools": [tool_schema()]})
+        respond(id_, {"tools": [delegate_task_schema(), delegate_work_packet_schema()]})
         return
     if method == "tools/call":
         params = request.get("params", {})
         name = params.get("name")
         arguments = params.get("arguments", {})
-        if name != "delegate_task":
+        if name == "delegate_task":
+            result = engine.delegate_task(arguments)
+            respond(id_, {"content": [{"type": "text", "text": json.dumps(result, ensure_ascii=False, indent=2)}]})
+            return
+        if name == "delegate_work_packet":
+            result = engine.delegate_work_packet(arguments)
+            respond(id_, {"content": [{"type": "text", "text": json.dumps(result, ensure_ascii=False, indent=2)}]})
+            return
+        if name not in {"delegate_task", "delegate_work_packet"}:
             respond(id_, error={"code": -32601, "message": f"Unknown tool: {name}"})
             return
-        result = engine.delegate_task(arguments)
-        respond(id_, {"content": [{"type": "text", "text": json.dumps(result, ensure_ascii=False, indent=2)}]})
-        return
     respond(id_, error={"code": -32601, "message": f"Unsupported method: {method}"})
 
 
