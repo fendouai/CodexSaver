@@ -35,6 +35,13 @@ class ProviderConfig:
     requires_api_key: bool
 
 
+COMPRESSION_LEVELS = ("lite", "full", "ultra", "wenyan")
+DEFAULT_COMPRESSION_CONFIG = {
+    "enabled": False,
+    "level": "full",
+}
+
+
 PROVIDER_PRESETS: Dict[str, ProviderPreset] = {
     "deepseek": ProviderPreset(
         name="deepseek",
@@ -200,6 +207,49 @@ def save_provider_config(
         "base_url": provider_config.get("base_url") or (preset.base_url if preset else None),
         "api_style": preset.api_style if preset else "openai",
         "requires_api_key": preset.requires_api_key if preset else True,
+    }
+
+
+def load_compression_config(config_path: str | None = None) -> Dict[str, Any]:
+    config = load_config(config_path)
+    compression = config.get("compression")
+    if not isinstance(compression, dict):
+        return dict(DEFAULT_COMPRESSION_CONFIG)
+    enabled = bool(compression.get("enabled", False))
+    level = str(compression.get("level", DEFAULT_COMPRESSION_CONFIG["level"])).strip().lower()
+    if level not in COMPRESSION_LEVELS:
+        level = DEFAULT_COMPRESSION_CONFIG["level"]
+    return {
+        "enabled": enabled,
+        "level": level,
+    }
+
+
+def save_compression_config(
+    *,
+    enabled: bool | None = None,
+    level: str | None = None,
+    config_path: str | None = None,
+) -> Dict[str, Any]:
+    config = load_config(config_path)
+    compression = config.setdefault("compression", {})
+    if enabled is not None:
+        compression["enabled"] = bool(enabled)
+    else:
+        compression.setdefault("enabled", DEFAULT_COMPRESSION_CONFIG["enabled"])
+    if level is not None:
+        normalized_level = str(level).strip().lower()
+        if normalized_level not in COMPRESSION_LEVELS:
+            raise ValueError(f"Invalid compression level: {level}")
+        compression["level"] = normalized_level
+    else:
+        current_level = str(compression.get("level", DEFAULT_COMPRESSION_CONFIG["level"])).strip().lower()
+        compression["level"] = current_level if current_level in COMPRESSION_LEVELS else DEFAULT_COMPRESSION_CONFIG["level"]
+    path = save_config(config, config_path)
+    resolved = load_compression_config(path)
+    return {
+        "config_path": path,
+        "compression": resolved,
     }
 
 

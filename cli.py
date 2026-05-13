@@ -7,7 +7,13 @@ import sys
 from pathlib import Path
 
 from codexsaver.engine import CodexSaverEngine
-from codexsaver.config import PROVIDER_PRESETS, normalize_provider, save_provider_config
+from codexsaver.config import (
+    PROVIDER_PRESETS,
+    load_compression_config,
+    normalize_provider,
+    save_compression_config,
+    save_provider_config,
+)
 from codexsaver.installer import doctor, install_config, install_global_config
 
 
@@ -15,7 +21,7 @@ def main(argv: list[str] | None = None) -> int:
     argv = argv or sys.argv[1:]
     if not argv or argv[0] in {"-h", "--help"}:
         return _run_subcommand(["--help"])
-    if argv and argv[0] in {"install", "doctor", "delegate", "work-packet", "auth"}:
+    if argv and argv[0] in {"install", "doctor", "delegate", "work-packet", "auth", "compression"}:
         return _run_subcommand(argv)
     return _run_delegate(argv)
 
@@ -82,6 +88,16 @@ def _run_subcommand(argv: list[str]) -> int:
         "providers",
         help="List built-in worker provider presets.",
     )
+
+    compression_parser = subparsers.add_parser(
+        "compression",
+        help="View or update worker output compression settings.",
+    )
+    compression_subparsers = compression_parser.add_subparsers(dest="compression_command", required=True)
+    compression_subparsers.add_parser("show", help="Show current compression configuration.")
+    compression_set_parser = compression_subparsers.add_parser("set", help="Update compression configuration.")
+    compression_set_parser.add_argument("--enabled", choices=["true", "false"], help="Enable or disable compression.")
+    compression_set_parser.add_argument("--level", choices=["lite", "full", "ultra", "wenyan"], help="Set compression level.")
 
     delegate_parser = subparsers.add_parser(
         "delegate",
@@ -185,6 +201,27 @@ def _run_subcommand(argv: list[str]) -> int:
             "next_step": "Run `python cli.py doctor` to verify CodexSaver can see the saved key.",
         }, ensure_ascii=False, indent=2))
         return 0
+
+    if args.command == "compression":
+        if args.compression_command == "show":
+            print(json.dumps({
+                "status": "ok",
+                "config_path": str(Path.home() / ".codexsaver" / "config.json"),
+                "compression": load_compression_config(),
+            }, ensure_ascii=False, indent=2))
+            return 0
+        if args.compression_command == "set":
+            enabled = None if args.enabled is None else args.enabled == "true"
+            report = save_compression_config(
+                enabled=enabled,
+                level=args.level,
+            )
+            print(json.dumps({
+                "status": "ok",
+                "config_path": report["config_path"],
+                "compression": report["compression"],
+            }, ensure_ascii=False, indent=2))
+            return 0
 
     if args.command == "work-packet":
         result = CodexSaverEngine().delegate_work_packet({

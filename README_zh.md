@@ -13,6 +13,7 @@ CodexSaver 是一个 MCP 工具，它把 Codex 变成一个有成本意识的路
 - 默认全局安装，一次配置后每个 Codex 工作区都能使用
 - 默认 DeepSeek，同时支持 OpenAI、Anthropic、Gemini、Qwen、Ollama、LM Studio 等 provider
 - provider 配置持久化到 `~/.codexsaver/config.json`
+- 可选 worker 输出压缩，受统一配置和 CLI 控制
 - 已通过测试、真实 DeepSeek 调用和全局 MCP launcher 检查
 
 ---
@@ -63,6 +64,8 @@ CodexSaver 返回的不是一段静默 JSON。
 - `preview`：只是预览路由，没有外部模型调用
 - `delegated_execution`：委派执行已经完成
 - `codex_takeover`：风险太高或任务太模糊，交回 Codex 处理
+
+当压缩启用时，`interaction` 里还会带上压缩状态和级别。
 
 ---
 
@@ -130,6 +133,37 @@ python cli.py auth set \
 python cli.py auth providers
 ```
 
+### Worker 输出压缩
+
+压缩只影响委托给 worker 的调用，不影响 Codex 自己的输出。
+
+查看当前配置：
+
+```bash
+python cli.py compression show
+```
+
+启用压缩：
+
+```bash
+python cli.py compression set --enabled true --level full
+```
+
+关闭压缩：
+
+```bash
+python cli.py compression set --enabled false
+```
+
+级别说明：
+
+- `lite`：简洁回答，保留技术术语
+- `full`：穴居人风格，去招呼、去填充词、短片段输出，保留代码和错误
+- `ultra`：电报风格，只留关键词
+- `wenyan`：文言极简，保留实义与技术细节
+
+默认关闭。
+
 如果你不想保存 key，而是只在当前 shell 会话里临时使用：
 
 ```bash
@@ -158,6 +192,7 @@ python cli.py doctor
 - `~/.codex/config.toml` 包含全局 `codexsaver` MCP server，或仓库里存在 `.codex/config.toml`
 - 全局安装时存在 `~/.codexsaver/codexsaver_mcp.py`
 - provider 配置来自环境变量或 `~/.codexsaver/config.json`
+- compression 配置来自 `~/.codexsaver/config.json`
 - `python cli.py doctor` 报告 `CodexSaver is ready`
 
 ---
@@ -210,6 +245,7 @@ python cli.py "添加单元测试" --files src/user/service.ts --workspace .
 | 全量测试 | `PYTHONDONTWRITEBYTECODE=1 python -m pytest -q -p no:cacheprovider` | `86 passed in 0.23s` |
 | 全局安装 | `python cli.py install --workspace .` | `status=ok`，全局配置指向 `~/.codexsaver/codexsaver_mcp.py` |
 | 本地 provider 保存 | `python cli.py auth set --provider deepseek --api-key ...` | 已保存到 `~/.codexsaver/config.json` |
+| 压缩配置 | `python cli.py compression set --enabled true --level full` | 已保存到 `~/.codexsaver/config.json` |
 | 工作区诊断 | `python cli.py doctor --workspace .` | `provider_api_key_source=local_config:deepseek`，工作区已就绪 |
 | 全局 launcher 检查 | 用 MCP `initialize` 调用 `~/.codexsaver/codexsaver_mcp.py` | 返回 `serverInfo.name=codexsaver` |
 | 真实 DeepSeek 调用 | `python cli.py delegate "Explain the CodexSaver router..." --files codexsaver/router.py --workspace .` | `route=deepseek`、`status=success`、验证通过 |
@@ -307,6 +343,31 @@ python cli.py "添加单元测试" --files src/user/service.ts --workspace .
 - 小型文档修改也很适合下放，而且会返回紧凑、易审查的 patch
 - 测试生成的延迟高于 explain，但仍然保持在低风险节省区间
 - 上下文更大的文档任务节省更高，因为 `Codex-only` 模式下的上下文成本更高
+
+---
+
+## 输出 Token 压缩检查
+
+我还用一个更长、更开放的任务，分别跑了三种模式来对比 `total_tokens`：
+
+- `original`：普通 prompt，不带 CodexSaver system prompt
+- `CodexSaver`：只加 worker prompt
+- `CodexSaver + Caveman`：worker prompt 再加 `full` 压缩指令
+
+这是一次真实 API 测量，不是估算。这个更长的任务里，caveman 风格带来的短输出
+抵消了额外的 prompt 开销，所以 `total_tokens` 明显下降了。
+
+| 模式 | total tokens | 输出形态 |
+|---|---:|---|
+| Original | 912 | 详细解释 |
+| CodexSaver | 760 | 简洁技术总结 |
+| CodexSaver + Caveman | 598 | 电报式摘要 |
+
+结论：
+
+- 这个更长的任务里，CodexSaver 相比普通 prompt 的总 token 更低
+- 加上 caveman 压缩指令后，回复进一步变短，而且总 token 也优于普通 CodexSaver prompt
+- 如果想更清楚看到压缩收益，最好选更长、更开放的任务，让输出长度有足够空间体现差异
 
 ---
 
@@ -414,6 +475,7 @@ python cli.py delegate "Explain the routing logic briefly" --files codexsaver/ro
 - [x] DeepSeek 默认 worker 集成
 - [x] 多 provider OpenAI-compatible worker 支持
 - [x] 本地 API key 持久化
+- [x] worker 输出压缩开关与 prompt 注入
 - [x] 可感知的交互返回
 - [x] 端到端验证流程
 - [ ] 成本感知动态路由

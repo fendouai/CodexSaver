@@ -72,6 +72,8 @@ def test_doctor_reports_missing_setup(tmp_path, monkeypatch):
     result = doctor(str(tmp_path))
     assert result["script_exists"] is False
     assert "project root" in result["recommended_next_step"]
+    assert result["compression_enabled"] is False
+    assert result["compression_level"] == "full"
 
 
 def test_cli_install_and_doctor(tmp_path, monkeypatch, capsys):
@@ -148,6 +150,22 @@ def test_cli_auth_providers_lists_presets(capsys):
     assert output["providers"]["ollama"]["requires_api_key"] is False
     assert "openai" in output["providers"]
     assert "gemini" in output["providers"]
+
+
+def test_cli_compression_show_and_set(tmp_path, monkeypatch, capsys):
+    config_path = tmp_path / "saved-config.json"
+    monkeypatch.setattr("codexsaver.config.CONFIG_PATH", config_path)
+    assert main(["compression", "show"]) == 0
+    show_output = json.loads(capsys.readouterr().out)
+    assert show_output["compression"] == {"enabled": False, "level": "full"}
+
+    assert main(["compression", "set", "--enabled", "true", "--level", "wenyan"]) == 0
+    set_output = json.loads(capsys.readouterr().out)
+    assert set_output["compression"] == {"enabled": True, "level": "wenyan"}
+
+    assert main(["compression", "show"]) == 0
+    show_output = json.loads(capsys.readouterr().out)
+    assert show_output["compression"] == {"enabled": True, "level": "wenyan"}
 
 
 class monkeypatch_context_global_launcher:
