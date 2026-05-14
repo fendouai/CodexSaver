@@ -463,6 +463,46 @@ Core modules:
 
 ---
 
+## Troubleshooting
+
+### Windows TOML Unicode Escape Error
+
+If Codex shows an error like this after installation:
+
+```text
+failed to read configuration layers ...\.codex\config.toml:21:14:
+too few unicode value digits, expected unicode hexadecimal value
+```
+
+the Codex config contains an unescaped Windows path such as:
+
+```toml
+args = ["C:\Users\admin\.codexsaver\codexsaver_mcp.py"]
+```
+
+TOML treats `\U` as the start of a unicode escape. Fix it by upgrading to the
+latest CodexSaver and reinstalling:
+
+```bash
+python -m pip install -e .
+codexsaver install
+codexsaver doctor --workspace .
+```
+
+Or repair the file manually by escaping backslashes:
+
+```toml
+args = ["C:\\Users\\admin\\.codexsaver\\codexsaver_mcp.py"]
+```
+
+Forward slashes also work on Windows:
+
+```toml
+args = ["C:/Users/admin/.codexsaver/codexsaver_mcp.py"]
+```
+
+---
+
 ## Commands
 
 ```bash

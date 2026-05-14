@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import tomllib
 from pathlib import Path
 
 from cli import main
@@ -17,6 +18,15 @@ def test_render_mcp_config():
     text = render_mcp_config("./codexsaver_mcp.py")
     assert '[mcp_servers.codexsaver]' in text
     assert 'args = ["./codexsaver_mcp.py"]' in text
+
+
+def test_render_mcp_config_escapes_windows_paths():
+    text = render_mcp_config(r"C:\Users\admin\.codexsaver\codexsaver_mcp.py")
+    parsed = tomllib.loads(text)
+    assert parsed["mcp_servers"]["codexsaver"]["args"] == [
+        r"C:\Users\admin\.codexsaver\codexsaver_mcp.py"
+    ]
+    assert r"C:\\Users\\admin" in text
 
 
 def test_install_config_creates_file(tmp_path):

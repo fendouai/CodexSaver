@@ -453,6 +453,45 @@ Codex review / apply / finalize
 
 ---
 
+## 常见问题
+
+### Windows TOML Unicode Escape 报错
+
+如果安装后 Codex 启动时报：
+
+```text
+failed to read configuration layers ...\.codex\config.toml:21:14:
+too few unicode value digits, expected unicode hexadecimal value
+```
+
+说明 Codex 配置里有未转义的 Windows 路径，例如：
+
+```toml
+args = ["C:\Users\admin\.codexsaver\codexsaver_mcp.py"]
+```
+
+TOML 会把 `\U` 当成 unicode escape 的开头。升级到最新版 CodexSaver 后重新安装即可：
+
+```bash
+python -m pip install -e .
+codexsaver install
+codexsaver doctor --workspace .
+```
+
+也可以手动修复为双反斜杠：
+
+```toml
+args = ["C:\\Users\\admin\\.codexsaver\\codexsaver_mcp.py"]
+```
+
+Windows 也支持正斜杠写法：
+
+```toml
+args = ["C:/Users/admin/.codexsaver/codexsaver_mcp.py"]
+```
+
+---
+
 ## 常用命令
 
 ```bash

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import re
 from pathlib import Path
 from typing import Any, Dict
@@ -16,11 +17,15 @@ GLOBAL_LAUNCHER_PATH = CONFIG_DIR / "codexsaver_mcp.py"
 def render_mcp_config(script_path: str) -> str:
     return (
         "[mcp_servers.codexsaver]\n"
-        'command = "python"\n'
-        f'args = ["{script_path}"]\n'
+        f"command = {_toml_string('python')}\n"
+        f"args = [{_toml_string(script_path)}]\n"
         "startup_timeout_sec = 10\n"
         "tool_timeout_sec = 120\n"
     )
+
+
+def _toml_string(value: str) -> str:
+    return json.dumps(str(value), ensure_ascii=False)
 
 
 def install_config(config_path: str, script_path: str) -> Dict[str, Any]:
