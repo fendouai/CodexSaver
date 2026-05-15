@@ -68,6 +68,7 @@ class TestCodexSaverEngine:
             assert result["estimated_savings_percent"] > 0
             assert result["interaction"]["mode"] == "delegated_execution"
             assert "configured worker provider" in result["interaction"]["headline"]
+            assert result["compression"] == {"enabled": False, "level": "full"}
             mock_instance.complete_task.assert_called_once()
 
     def test_delegate_task_deepseek_failure_returns_codex(self):
@@ -229,3 +230,31 @@ class TestCodexSaverEngine:
         assert result["route"] == "codex"
         assert result["status"] == "needs_codex"
         assert "allowed_files" in result["message"]
+
+    def test_delegate_task_includes_compression_info_when_enabled(self, tmp_path, monkeypatch):
+        config_path = tmp_path / "config.json"
+        config_path.write_text(
+            '{"compression": {"enabled": true, "level": "lite"}}',
+            encoding="utf-8",
+        )
+        monkeypatch.setattr("codexsaver.config.CONFIG_PATH", config_path)
+        with patch("codexsaver.engine.ProviderClient") as MockClient:
+            mock_instance = MagicMock()
+            mock_instance.complete_task.return_value = {
+                "status": "success",
+                "summary": "done",
+                "changed_files": [],
+                "patch": "",
+                "commands_to_run": [],
+                "risk_notes": [],
+            }
+            MockClient.return_value = mock_instance
+
+            result = self.engine.delegate_task({
+                "instruction": "add tests",
+                "files": [],
+            })
+
+            assert result["compression"] == {"enabled": True, "level": "lite"}
+            assert result["interaction"]["compression"]["enabled"] is True
+            assert result["interaction"]["compression"]["level"] == "lite"

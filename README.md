@@ -18,6 +18,7 @@ the tool is active.
 - Global-by-default Codex install, so every workspace can use the same MCP tool
 - DeepSeek by default, with presets for OpenAI, Anthropic, Gemini, Qwen, Ollama, LM Studio, and more
 - One-time local provider setup in `~/.codexsaver/config.json`
+- Optional worker-output compression for shorter, review-friendly delegated results
 - Verified with tests, real DeepSeek calls, and end-to-end MCP launcher checks
 
 ---
@@ -180,6 +181,9 @@ Three states matter:
 - `preview`: routing preview only, no external model call
 - `delegated_execution`: delegated run completed
 - `codex_takeover`: task stayed with Codex because risk was too high or the task was ambiguous
+
+When worker-output compression is enabled, the same `interaction` block includes
+the active compression level so Codex can see why delegated replies are terser.
 
 ---
 
@@ -444,6 +448,27 @@ See built-in presets:
 codexsaver auth providers
 ```
 
+### Worker Output Compression
+
+Compression only affects delegated worker calls. It does not change Codex's own
+final answer. It is useful when you want cheaper workers to return shorter,
+more reviewable summaries, findings, or patch notes.
+
+```bash
+codexsaver compression show
+codexsaver compression set --enabled true --level full
+codexsaver compression set --enabled false
+```
+
+Levels:
+
+- `lite`: concise, keeps technical terms and exact details
+- `full`: compressed fragments, no greetings or filler, preserves code and errors
+- `ultra`: telegraphic, essential facts and identifiers only
+- `wenyan`: terse classical Chinese style for Chinese workflows
+
+Default is disabled. The setting is persisted in `~/.codexsaver/config.json`.
+
 If you prefer a temporary one-shell-session setup instead of saving the key locally:
 
 ```bash
@@ -472,6 +497,7 @@ Ready means:
 - `~/.codex/config.toml` contains the global `codexsaver` MCP server, or `.codex/config.toml` exists in the repo
 - `~/.codexsaver/codexsaver_mcp.py` exists for global installs
 - provider settings are available from env vars or `~/.codexsaver/config.json`
+- compression settings are available from `~/.codexsaver/config.json`
 - `codexsaver doctor --workspace .` reports `CodexSaver is ready`
 
 ---
@@ -525,6 +551,7 @@ Measured on May 12, 2026 with the editable install, global launcher, and local-k
 | Full test suite | `PYTHONDONTWRITEBYTECODE=1 python -m pytest -q -p no:cacheprovider` | `97 passed in 0.41s` |
 | Global install | `codexsaver install --workspace .` | global config points at `~/.codexsaver/codexsaver_mcp.py` |
 | Local provider persistence | `codexsaver auth set --provider deepseek --api-key ...` | saved to `~/.codexsaver/config.json` |
+| Compression config | `codexsaver compression set --enabled true --level full` | saved to `~/.codexsaver/config.json` |
 | Workspace doctor | `codexsaver doctor --workspace .` | `provider_api_key_source=local_config:deepseek`, workspace ready |
 | Global launcher check | `python ~/.codexsaver/codexsaver_mcp.py` with MCP `initialize` | returned `serverInfo.version=0.2.0` |
 | V2 MCP tool check | MCP `tools/list` | includes `delegate_work_packet` |
@@ -726,6 +753,7 @@ Core modules:
 ## Security And Persistence
 
 - `codexsaver auth set --provider ... --api-key ...` saves provider settings to `~/.codexsaver/config.json`
+- `codexsaver compression set ...` saves optional worker-output compression in the same local config
 - the config file is written with local-user-only permissions
 - `doctor` shows whether the key comes from the environment or local config, and only prints a masked preview
 - live calls use local config automatically if no env key is exported
@@ -778,6 +806,8 @@ args = ["C:/Users/admin/.codexsaver/codexsaver_mcp.py"]
 ```bash
 codexsaver auth providers
 codexsaver auth set --provider deepseek --api-key YOUR_API_KEY
+codexsaver compression show
+codexsaver compression set --enabled true --level full
 codexsaver install
 codexsaver install --project
 codexsaver doctor --workspace .
@@ -797,6 +827,7 @@ codexsaver specialist explainer "Explain this module" --files codexsaver/config.
 - [x] DeepSeek default worker integration
 - [x] multi-provider OpenAI-compatible worker support
 - [x] local API key persistence
+- [x] worker output compression toggles and provider prompt injection
 - [x] interaction-aware tool responses
 - [x] end-to-end verification flow
 - [x] v2 bounded work packets with sandboxed patch verification

@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 from codexsaver.config import (
+    load_compression_config,
     load_config,
     mask_secret,
     resolve_api_key,
     resolve_provider_config,
     save_api_key,
+    save_compression_config,
     save_provider_config,
 )
 
@@ -109,3 +111,25 @@ def test_custom_provider_requires_custom_base_url(monkeypatch, tmp_path):
     provider = resolve_provider_config()
     assert provider.name == "custom"
     assert provider.base_url == "https://llm.example.test/v1/chat/completions"
+
+
+def test_compression_config_defaults_to_disabled(tmp_path, monkeypatch):
+    monkeypatch.setattr("codexsaver.config.CONFIG_PATH", tmp_path / "missing.json")
+    assert load_compression_config() == {"enabled": False, "level": "full"}
+
+
+def test_save_and_load_compression_config(tmp_path):
+    config_path = tmp_path / "config.json"
+    report = save_compression_config(enabled=True, level="ultra", config_path=str(config_path))
+    assert report["compression"] == {"enabled": True, "level": "ultra"}
+    assert load_compression_config(str(config_path)) == {"enabled": True, "level": "ultra"}
+
+
+def test_save_compression_config_rejects_invalid_level(tmp_path):
+    config_path = tmp_path / "config.json"
+    try:
+        save_compression_config(enabled=True, level="bad", config_path=str(config_path))
+    except ValueError as exc:
+        assert "Invalid compression level" in str(exc)
+    else:
+        raise AssertionError("expected ValueError")

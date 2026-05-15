@@ -5,7 +5,7 @@ import re
 from pathlib import Path
 from typing import Any, Dict
 
-from .config import CONFIG_DIR, CONFIG_PATH, mask_secret, resolve_provider_config
+from .config import CONFIG_DIR, CONFIG_PATH, load_compression_config, mask_secret, resolve_provider_config
 
 SECTION_RE = re.compile(
     r"(?ms)^\[mcp_servers\.codexsaver\]\n.*?(?=^\[|\Z)"
@@ -114,6 +114,7 @@ def doctor(workspace: str) -> Dict[str, Any]:
     project_config_has_codexsaver = _has_codexsaver_section(project_config)
     global_config_has_codexsaver = _has_codexsaver_section(global_config)
     provider = resolve_provider_config()
+    compression = load_compression_config()
     return {
         "workspace": str(root),
         "script_exists": script_path.exists(),
@@ -141,6 +142,8 @@ def doctor(workspace: str) -> Dict[str, Any]:
         "deepseek_api_key_configured": bool(provider.api_key),
         "deepseek_api_key_source": provider.api_key_source,
         "deepseek_api_key_preview": mask_secret(provider.api_key),
+        "compression_enabled": compression["enabled"],
+        "compression_level": compression["level"],
         "project_agents_path": str(root / "AGENTS.md"),
         "project_agents_has_codexsaver_block": _has_codexsaver_agents_block(root / "AGENTS.md"),
         "project_hooks_path": str(root / ".codex" / "hooks.json"),

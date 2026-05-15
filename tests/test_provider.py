@@ -50,6 +50,49 @@ def test_provider_client_posts_chat_completion(monkeypatch):
     assert payload["messages"][0]["role"] == "system"
 
 
+def test_provider_client_injects_compression_prompt(monkeypatch, tmp_path):
+    config_path = tmp_path / "config.json"
+    config_path.write_text(
+        json.dumps({"compression": {"enabled": True, "level": "full"}}),
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("CODEXSAVER_PROVIDER", "openai")
+    monkeypatch.setenv("CODEXSAVER_API_KEY", "sk-test")
+    monkeypatch.setenv("CODEXSAVER_MODEL", "gpt-test")
+    monkeypatch.setattr("codexsaver.config.CONFIG_PATH", config_path)
+    response = MagicMock()
+    response.read.return_value = json.dumps({
+        "choices": [{
+            "message": {
+                "content": json.dumps({
+                    "status": "success",
+                    "summary": "ok",
+                    "changed_files": [],
+                    "patch": "",
+                    "commands_to_run": [],
+                    "risk_notes": [],
+                })
+            }
+        }]
+    }).encode("utf-8")
+    response.__enter__.return_value = response
+
+    with patch("urllib.request.urlopen", return_value=response) as urlopen:
+        client = ProviderClient()
+        client.complete_task(WorkerTask(
+            instruction="explain code",
+            task_type="explain",
+            risk="low",
+            constraints=[],
+            workspace="/tmp/project",
+            files=[],
+        ))
+
+    payload = json.loads(urlopen.call_args[0][0].data.decode("utf-8"))
+    assert "Output compression mode" in payload["messages"][0]["content"]
+    assert "compressed worker output" in payload["messages"][0]["content"]
+
+
 def test_provider_client_posts_custom_json(monkeypatch):
     monkeypatch.setenv("CODEXSAVER_PROVIDER", "openai")
     monkeypatch.setenv("CODEXSAVER_API_KEY", "sk-test")

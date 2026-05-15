@@ -13,6 +13,7 @@ CodexSaver 是一个 MCP 工具，它把 Codex 变成一个有成本意识的路
 - 默认全局安装，一次配置后每个 Codex 工作区都能使用
 - 默认 DeepSeek，同时支持 OpenAI、Anthropic、Gemini、Qwen、Ollama、LM Studio 等 provider
 - provider 配置持久化到 `~/.codexsaver/config.json`
+- 可选 worker 输出压缩，让委派结果更短、更容易审查
 - 已通过测试、真实 DeepSeek 调用和全局 MCP launcher 检查
 
 ---
@@ -176,6 +177,9 @@ CodexSaver 返回的不是一段静默 JSON。
 - `preview`：只是预览路由，没有外部模型调用
 - `delegated_execution`：委派执行已经完成
 - `codex_takeover`：风险太高或任务太模糊，交回 Codex 处理
+
+如果启用了 worker 输出压缩，`interaction` 里也会显示当前压缩级别，
+这样 Codex 能知道为什么委派结果会更短。
 
 ---
 
@@ -438,6 +442,26 @@ codexsaver auth set \
 codexsaver auth providers
 ```
 
+### Worker 输出压缩
+
+压缩只影响委派给 worker 的调用，不影响 Codex 自己的最终回答。它适合用在
+解释、扫描、发现问题、patch notes 这类场景，让便宜 worker 的结果更短、更易审查。
+
+```bash
+codexsaver compression show
+codexsaver compression set --enabled true --level full
+codexsaver compression set --enabled false
+```
+
+压缩级别：
+
+- `lite`：简洁回答，保留技术术语和精确信息
+- `full`：压缩片段，去寒暄和填充词，保留代码和错误
+- `ultra`：电报式，只留关键事实和标识符
+- `wenyan`：文言极简，适合中文工作流
+
+默认关闭，配置持久化在 `~/.codexsaver/config.json`。
+
 如果你不想保存 key，而是只在当前 shell 会话里临时使用：
 
 ```bash
@@ -466,6 +490,7 @@ codexsaver doctor --workspace .
 - `~/.codex/config.toml` 包含全局 `codexsaver` MCP server，或仓库里存在 `.codex/config.toml`
 - 全局安装时存在 `~/.codexsaver/codexsaver_mcp.py`
 - provider 配置来自环境变量或 `~/.codexsaver/config.json`
+- compression 配置来自 `~/.codexsaver/config.json`
 - `codexsaver doctor --workspace .` 报告 `CodexSaver is ready`
 
 ---
@@ -519,6 +544,7 @@ codexsaver delegate "添加单元测试" --files src/user/service.ts --workspace
 | 全量测试 | `PYTHONDONTWRITEBYTECODE=1 python -m pytest -q -p no:cacheprovider` | `97 passed in 0.41s` |
 | 全局安装 | `codexsaver install --workspace .` | 全局配置指向 `~/.codexsaver/codexsaver_mcp.py` |
 | 本地 provider 保存 | `codexsaver auth set --provider deepseek --api-key ...` | 已保存到 `~/.codexsaver/config.json` |
+| 压缩配置 | `codexsaver compression set --enabled true --level full` | 已保存到 `~/.codexsaver/config.json` |
 | 工作区诊断 | `codexsaver doctor --workspace .` | `provider_api_key_source=local_config:deepseek`，工作区已就绪 |
 | 全局 launcher 检查 | 用 MCP `initialize` 调用 `~/.codexsaver/codexsaver_mcp.py` | 返回 `serverInfo.version=0.2.0` |
 | v2 MCP 工具检查 | MCP `tools/list` | 包含 `delegate_work_packet` |
@@ -717,6 +743,7 @@ Codex review / apply / finalize
 ## 安全与持久化
 
 - `codexsaver auth set --provider ... --api-key ...` 会把 provider 配置保存到 `~/.codexsaver/config.json`
+- `codexsaver compression set ...` 会把可选 worker 输出压缩配置保存到同一个本地配置
 - 配置文件会使用仅本地用户可读写的权限
 - `doctor` 会告诉你 key 是来自环境变量还是本地配置，并且只显示脱敏预览
 - 如果没有导出环境变量，真实调用会自动使用本地配置
@@ -768,6 +795,8 @@ args = ["C:/Users/admin/.codexsaver/codexsaver_mcp.py"]
 ```bash
 codexsaver auth providers
 codexsaver auth set --provider deepseek --api-key YOUR_API_KEY
+codexsaver compression show
+codexsaver compression set --enabled true --level full
 codexsaver install
 codexsaver install --project
 codexsaver doctor --workspace .
@@ -787,6 +816,7 @@ codexsaver specialist explainer "Explain this module" --files codexsaver/config.
 - [x] DeepSeek 默认 worker 集成
 - [x] 多 provider OpenAI-compatible worker 支持
 - [x] 本地 API key 持久化
+- [x] worker 输出压缩开关与 provider prompt 注入
 - [x] 可感知的交互返回
 - [x] 端到端验证流程
 - [x] v2 bounded work packet 和沙箱 patch 验证

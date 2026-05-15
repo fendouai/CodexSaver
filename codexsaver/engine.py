@@ -5,7 +5,7 @@ from typing import Any, Dict
 
 from .context import ContextPacker
 from .cost import CostEstimator
-from .config import resolve_provider_config
+from .config import load_compression_config, resolve_provider_config
 from .provider import ProviderClient, ProviderError
 from .router import PROTECTED_PATH_KEYWORDS, Router
 from .schema import DelegateTaskInput, WorkPacketInput, WorkerTask, to_dict
@@ -31,6 +31,7 @@ class CodexSaverEngine:
 
     def delegate_task(self, input_data: Dict[str, Any]) -> Dict[str, Any]:
         provider = resolve_provider_config()
+        compression = load_compression_config()
         req = DelegateTaskInput(
             instruction=input_data["instruction"],
             files=input_data.get("files", []),
@@ -72,6 +73,7 @@ class CodexSaverEngine:
                     estimated_savings_percent=0,
                     mode="codex_takeover",
                     detail="Protected domain or ambiguous task detected before delegation.",
+                    compression=compression,
                 ),
             }
 
@@ -91,6 +93,7 @@ class CodexSaverEngine:
                     estimated_savings_percent=estimated_savings,
                     mode="preview",
                     detail="Dry-run preview only. No external model call was made.",
+                    compression=compression,
                 ),
             }
 
@@ -111,6 +114,7 @@ class CodexSaverEngine:
                     estimated_savings_percent=0,
                     mode="codex_takeover",
                     detail=f"Delegation failed and control returned to Codex: {e}",
+                    compression=compression,
                 ),
             }
 
@@ -132,6 +136,10 @@ class CodexSaverEngine:
                 "Review the patch carefully. Apply only if safe. "
                 "Run or ask the user to run commands_to_run before finalizing."
             ),
+            "compression": {
+                "enabled": compression["enabled"],
+                "level": compression["level"],
+            },
             "interaction": self._interaction_payload(
                 decision=to_dict(decision),
                 route=final_route,
@@ -139,12 +147,14 @@ class CodexSaverEngine:
                 estimated_savings_percent=final_savings,
                 mode="delegated_execution" if verification.ok else "codex_takeover",
                 detail=verification.reason,
+                compression=compression,
             ),
         }
 
     def _interaction_payload(self, decision: Dict[str, Any], route: str, status: str,
                              estimated_savings_percent: int, mode: str,
-                             detail: str) -> Dict[str, Any]:
+                             detail: str,
+                             compression: Dict[str, Any] | None = None) -> Dict[str, Any]:
         task_type = decision["task_type"]
         risk = decision["risk"]
         tool_name = "codexsaver.delegate_task"
@@ -160,7 +170,7 @@ class CodexSaverEngine:
         else:
             headline = "CodexSaver kept this task in Codex."
             next_step = "Use Codex directly because the task is risky, protected, or ambiguous."
-        return {
+        payload = {
             "tool": tool_name,
             "mode": mode,
             "headline": headline,
@@ -170,9 +180,17 @@ class CodexSaverEngine:
             "estimated_savings_percent": estimated_savings_percent,
             "next_step": next_step,
         }
+        if compression and compression.get("enabled"):
+            payload["compression"] = {
+                "enabled": True,
+                "level": compression.get("level", "full"),
+                "note": f"Worker output compression enabled at level={compression.get('level', 'full')}",
+            }
+        return payload
 
     def delegate_work_packet(self, input_data: Dict[str, Any]) -> Dict[str, Any]:
         provider = resolve_provider_config()
+        compression = load_compression_config()
         goal = input_data["goal"]
         files = input_data.get("files", [])
         decision = self.router.decide(goal, files)
@@ -190,6 +208,7 @@ class CodexSaverEngine:
                     estimated_savings_percent=0,
                     mode="codex_takeover",
                     detail="Protected domain or ambiguous work packet detected before delegation.",
+                    compression=compression,
                 ),
             }
 
@@ -225,6 +244,7 @@ class CodexSaverEngine:
                     estimated_savings_percent=0,
                     mode="codex_takeover",
                     detail="No allowed_files were provided for a write-capable work packet.",
+                    compression=compression,
                 ),
             }
 
@@ -253,6 +273,7 @@ class CodexSaverEngine:
                     estimated_savings_percent=estimated_savings,
                     mode="preview",
                     detail="Dry-run work packet preview only. No external model call was made.",
+                    compression=compression,
                 ),
             }
 
@@ -274,6 +295,7 @@ class CodexSaverEngine:
                     estimated_savings_percent=0,
                     mode="codex_takeover",
                     detail=f"Delegation failed and control returned to Codex: {e}",
+                    compression=compression,
                 ),
             }
 
@@ -294,6 +316,7 @@ class CodexSaverEngine:
             estimated_savings_percent=worker_result["estimated_savings_percent"],
             mode="bounded_implementation" if worker_result["status"] == "success" else "codex_takeover",
             detail=worker_result["verification"]["reason"],
+            compression=compression,
         )
         return worker_result
 

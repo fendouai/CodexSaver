@@ -5,7 +5,7 @@ import urllib.error
 import urllib.request
 from typing import Any, Dict
 
-from .config import ProviderConfig, resolve_provider_config
+from .config import ProviderConfig, load_compression_config, resolve_provider_config
 from .schema import WorkerTask, to_dict
 
 
@@ -36,6 +36,23 @@ Required JSON shape:
   "risk_notes": ["note"]
 }
 """.strip()
+
+
+COMPRESSION_PROMPTS = {
+    "lite": "Be concise. Remove unnecessary words. Keep technical terms and exact details.",
+    "full": (
+        "Use compressed worker output. Remove greetings, filler, and repeated explanation. "
+        "Prefer short fragments over long prose. Keep code, commands, errors, and exact technical details."
+    ),
+    "ultra": (
+        "Use telegraphic worker output. Return only essential facts, identifiers, commands, and risks. "
+        "Omit grammar-heavy explanation unless needed for correctness."
+    ),
+    "wenyan": (
+        "文言极简。去虚词，留实义。直陈结论，保留代码、命令与错误信息。"
+        "勿寒暄，勿赘述，勿作结语。"
+    ),
+}
 
 
 class ProviderClient:
@@ -78,7 +95,7 @@ class ProviderClient:
         return self.config.name
 
     def complete_task(self, task: WorkerTask) -> Dict[str, Any]:
-        return self.complete_json(SYSTEM_PROMPT, to_dict(task))
+        return self.complete_json(self._build_system_prompt(), to_dict(task))
 
     def complete_json(self, system_prompt: str, payload: Dict[str, Any]) -> Dict[str, Any]:
         if self.config.api_style == "anthropic":
@@ -100,6 +117,14 @@ class ProviderClient:
             raise ProviderError(
                 f"Failed to parse {self.config.name} response: {body[:1000]}"
             ) from e
+
+    def _build_system_prompt(self) -> str:
+        compression = load_compression_config()
+        if not compression.get("enabled"):
+            return SYSTEM_PROMPT
+        level = str(compression.get("level", "full")).strip().lower()
+        compression_prompt = COMPRESSION_PROMPTS.get(level, COMPRESSION_PROMPTS["full"])
+        return f"{SYSTEM_PROMPT}\n\nOutput compression mode:\n{compression_prompt}"
 
     def _post(self, payload: Dict[str, Any]) -> str:
         request = urllib.request.Request(
