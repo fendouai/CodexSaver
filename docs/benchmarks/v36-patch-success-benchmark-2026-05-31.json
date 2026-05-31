@@ -1,0 +1,128 @@
+{
+  "version": "0.3.6",
+  "date": "2026-05-31",
+  "benchmark": "v36-patch-success",
+  "workspace": "/Users/f/GitHub/CodexSaver",
+  "method": "Deterministic patch benchmark. Each scenario replays fixed worker outputs against the current orchestrator and compares them with a simulated pre-fix v3.5 baseline. This isolates orchestration robustness rather than live model variance.",
+  "summary": {
+    "scenarios": 5,
+    "baseline_write_successes": 2,
+    "current_write_successes": 4,
+    "baseline_write_success_rate": 0.4,
+    "current_write_success_rate": 0.8,
+    "baseline_verified_outcomes": 1,
+    "current_verified_outcomes": 5,
+    "baseline_verified_outcome_rate": 0.2,
+    "current_verified_outcome_rate": 1.0,
+    "verified_outcome_gain": 4,
+    "average_repair_count": 0.8,
+    "average_latency_seconds": 0.147
+  },
+  "results": [
+    {
+      "id": "node_repair_success",
+      "name": "Node repair after initial patch failure",
+      "current": {
+        "status": "success",
+        "summary": "v3 graph executed successfully.",
+        "verified_success": true,
+        "repair_count": 1,
+        "worker_calls": 1,
+        "latency_seconds": 0.143
+      },
+      "baseline": {
+        "status": "success",
+        "verified_success": true,
+        "reason": "Old v3.5 already retried patch nodes that failed before lint."
+      },
+      "delta": {
+        "status_changed": false,
+        "verified_outcome_gain": 0
+      }
+    },
+    {
+      "id": "lint_changed_files_repair",
+      "name": "Lint repair for changed_files mismatch",
+      "current": {
+        "status": "success",
+        "summary": "v3 graph executed successfully.",
+        "verified_success": true,
+        "repair_count": 1,
+        "worker_calls": 1,
+        "latency_seconds": 0.117
+      },
+      "baseline": {
+        "status": "needs_codex",
+        "verified_success": false,
+        "reason": "Old v3.5 failed patch lint and returned to Codex without a lint-repair round."
+      },
+      "delta": {
+        "status_changed": true,
+        "verified_outcome_gain": 1
+      }
+    },
+    {
+      "id": "lint_missing_verification_plan_repair",
+      "name": "Lint repair for missing verification plan",
+      "current": {
+        "status": "success",
+        "summary": "v3 graph executed successfully.",
+        "verified_success": true,
+        "repair_count": 1,
+        "worker_calls": 1,
+        "latency_seconds": 0.176
+      },
+      "baseline": {
+        "status": "needs_codex",
+        "verified_success": false,
+        "reason": "Old v3.5 rejected missing verification_plan and stopped there."
+      },
+      "delta": {
+        "status_changed": true,
+        "verified_outcome_gain": 1
+      }
+    },
+    {
+      "id": "test_writer_pytest_path_repair",
+      "name": "test_writer exact pytest path repair",
+      "current": {
+        "status": "success",
+        "summary": "v3 graph executed successfully.",
+        "verified_success": true,
+        "repair_count": 1,
+        "worker_calls": 1,
+        "latency_seconds": 0.217
+      },
+      "baseline": {
+        "status": "success",
+        "verified_success": false,
+        "reason": "Old v3.5 accepted any non-empty verification_plan and could silently pass a weak pytest command."
+      },
+      "delta": {
+        "status_changed": false,
+        "verified_outcome_gain": 1
+      }
+    },
+    {
+      "id": "duplicate_changed_files_blocked",
+      "name": "Duplicate file writes remain blocked",
+      "current": {
+        "status": "needs_codex",
+        "summary": "Patch lint failed before aggregation: Duplicate changed_files before aggregation: ['README.md']",
+        "verified_success": true,
+        "repair_count": 0,
+        "worker_calls": 2,
+        "latency_seconds": 0.082
+      },
+      "baseline": {
+        "status": "needs_codex",
+        "verified_success": false,
+        "reason": "Duplicate file writes should remain blocked; this is a safety guard, not a repair target."
+      },
+      "delta": {
+        "status_changed": false,
+        "verified_outcome_gain": 1
+      }
+    }
+  ]
+}

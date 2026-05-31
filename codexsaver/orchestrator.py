@@ -230,6 +230,7 @@ class V3Orchestrator:
                 "readonly_nodes": len(readonly_results),
                 "patch_nodes": len(patch_results),
                 "worker_calls": len(readonly_results) + len(patch_results),
+                "repair_count": self._repair_count(readonly_results + patch_results),
                 "estimated_savings_percent": self._estimate_savings(len(nodes)),
                 "worker_participation_percent": self._participation_percent(
                     len(readonly_results) + len(patch_results),
@@ -268,13 +269,21 @@ class V3Orchestrator:
             ))
         results = self._repair_failed_patch_nodes(workspace, base_files, nodes, results)
         failed = [item for item in results if item["status"] != "success"]
+        lint_rounds = 0
+        lint = self._lint_patch_results(workspace, nodes, results)
+        while lint_rounds < 2 and lint.get("repairable"):
+            results = self._repair_lint_failed_patch_nodes(workspace, base_files, nodes, results, lint)
+            failed = [item for item in results if item["status"] != "success"]
+            if failed:
+                break
+            lint_rounds += 1
+            lint = self._lint_patch_results(workspace, nodes, results)
         if failed:
             return {
                 "status": "needs_codex",
                 "summary": "One or more patch specialists failed verification.",
                 "results": results,
             }
-        lint = self._lint_patch_results(workspace, nodes, results)
         if not lint["ok"]:
             return {
                 "status": "needs_codex",
@@ -344,6 +353,54 @@ class V3Orchestrator:
                 repaired.append(result)
         return repaired
 
+    def _repair_lint_failed_patch_nodes(self, workspace: Path, base_files: List[str],
+                                        nodes: List[WorkGraphNode],
+                                        results: List[Dict[str, Any]],
+                                        lint: Dict[str, Any]) -> List[Dict[str, Any]]:
+        node_id = str(lint.get("node_id") or "")
+        if not node_id:
+            return results
+        node_by_id = {node.id: node for node in nodes}
+        node = node_by_id.get(node_id)
+        if node is None:
+            return results
+        replacement_index = next(
+            (index for index, item in enumerate(results) if str(item.get("node_id")) == node_id),
+            -1,
+        )
+        if replacement_index < 0:
+            return results
+        prior_result = results[replacement_index]
+        repair_node = WorkGraphNode(
+            id=node.id,
+            type=node.type,
+            goal=(
+                f"{node.goal}\n\nRepair the previous patch after a patch-lint failure. "
+                f"Lint issue type: {lint.get('issue_type', 'unknown')}. "
+                f"Lint failure: {lint.get('reason', '')}. "
+                f"Previous summary: {prior_result.get('summary', '')}. "
+                "Return a corrected patch with exact changed_files, verification_plan, and rollback_notes."
+            ),
+            depends_on=node.depends_on,
+            specialist=node.specialist,
+            allowed_files=node.allowed_files,
+            forbidden_paths=node.forbidden_paths,
+            allowed_commands=node.allowed_commands,
+            acceptance_criteria=node.acceptance_criteria,
+            mode=node.mode,
+            action_type=node.action_type,
+            risk_domain=node.risk_domain,
+            execution_policy=node.execution_policy,
+        )
+        repair_result = self._run_patch_node(repair_node, str(workspace), base_files, force_repair=True)
+        if repair_result.get("status") != "success":
+            prior_result["lint_repair_attempt"] = repair_result
+            return results
+        repair_result["lint_repair_of"] = prior_result
+        updated = list(results)
+        updated[replacement_index] = repair_result
+        return updated
+
     def _lint_patch_results(self, workspace: Path, nodes: List[WorkGraphNode],
                             results: List[Dict[str, Any]]) -> Dict[str, Any]:
         node_by_id = {node.id: node for node in nodes}
@@ -353,20 +410,30 @@ class V3Orchestrator:
             if item.get("preflight_satisfied"):
                 continue
             if not patch.strip():
-                return {"ok": False, "reason": f"Empty patch from {item.get('specialist')}"}
+                return self._lint_failure(
+                    item,
+                    "empty_patch",
+                    f"Empty patch from {item.get('specialist')}",
+                )
             patch_files = changed_files_from_patch(patch)
             declared_files = sorted(set(item.get("changed_files", [])))
             if sorted(patch_files) != declared_files:
-                return {
-                    "ok": False,
-                    "reason": (
+                return self._lint_failure(
+                    item,
+                    "changed_files_mismatch",
+                    (
                         f"changed_files mismatch for {item.get('specialist')}: "
                         f"declared={declared_files}, patch={patch_files}"
                     ),
-                }
+                )
             duplicate = [path for path in patch_files if path in seen]
             if duplicate:
-                return {"ok": False, "reason": f"Duplicate changed_files before aggregation: {duplicate}"}
+                return self._lint_failure(
+                    item,
+                    "duplicate_changed_files",
+                    f"Duplicate changed_files before aggregation: {duplicate}",
+                    repairable=False,
+                )
             seen.update(patch_files)
             node = node_by_id.get(str(item.get("node_id")))
             allowed_files = node.allowed_files if node else declared_files
@@ -383,16 +450,88 @@ class V3Orchestrator:
             )
             policy = verify_patch_policy(patch, packet)
             if not policy.ok:
-                return {"ok": False, "reason": policy.reason, "warnings": policy.warnings}
+                return self._lint_failure(
+                    item,
+                    "patch_policy",
+                    policy.reason,
+                    warnings=policy.warnings,
+                )
             sandbox = PatchSandbox(workspace, packet)
             observation = sandbox.propose_patch(patch)
             if observation.get("type") != "patch_applied":
-                return {"ok": False, "reason": observation.get("reason", "Patch did not apply."), "observation": observation}
+                return self._lint_failure(
+                    item,
+                    "patch_apply",
+                    observation.get("reason", "Patch did not apply."),
+                    observation=observation,
+                )
             if not item.get("verification_plan"):
-                return {"ok": False, "reason": f"Missing verification_plan for {item.get('specialist')}"}
+                return self._lint_failure(
+                    item,
+                    "missing_verification_plan",
+                    f"Missing verification_plan for {item.get('specialist')}",
+                )
             if not item.get("rollback_notes"):
-                return {"ok": False, "reason": f"Missing rollback_notes for {item.get('specialist')}"}
+                return self._lint_failure(
+                    item,
+                    "missing_rollback_notes",
+                    f"Missing rollback_notes for {item.get('specialist')}",
+                )
+            metadata_issue = self._validate_patch_result_metadata(item, node, patch_files)
+            if metadata_issue:
+                return metadata_issue
         return {"ok": True, "reason": "Patch lint passed."}
+
+    def _validate_patch_result_metadata(self, item: Dict[str, Any], node: WorkGraphNode | None,
+                                        patch_files: List[str]) -> Dict[str, Any] | None:
+        if node is None or node.specialist != "test_writer":
+            return None
+        python_test_files = [path for path in patch_files if _is_python_test_file(path)]
+        if not python_test_files:
+            return self._lint_failure(
+                item,
+                "test_writer_missing_test_file",
+                "test_writer must change at least one Python test file under tests/test_*.py.",
+            )
+        verification_plan = [str(entry) for entry in item.get("verification_plan", [])]
+        pytest_entries = [entry for entry in verification_plan if "pytest" in entry]
+        if not pytest_entries:
+            return self._lint_failure(
+                item,
+                "test_writer_missing_pytest",
+                "test_writer verification_plan must include an exact pytest command.",
+            )
+        missing_commands = [
+            path for path in python_test_files
+            if not any(path in entry for entry in pytest_entries)
+        ]
+        if missing_commands:
+            return self._lint_failure(
+                item,
+                "test_writer_pytest_path_mismatch",
+                f"test_writer verification_plan must mention the generated test file: {missing_commands}",
+            )
+        rollback_text = " ".join(str(entry) for entry in item.get("rollback_notes", [])).lower()
+        if not any(word in rollback_text for word in ["delete", "revert", "remove"]):
+            return self._lint_failure(
+                item,
+                "test_writer_rollback_too_vague",
+                "test_writer rollback_notes must explain how to delete or revert the generated test file.",
+            )
+        return None
+
+    def _lint_failure(self, item: Dict[str, Any], issue_type: str, reason: str,
+                      repairable: bool = True, **extra: Any) -> Dict[str, Any]:
+        payload = {
+            "ok": False,
+            "issue_type": issue_type,
+            "reason": reason,
+            "node_id": item.get("node_id"),
+            "specialist": item.get("specialist"),
+            "repairable": repairable,
+        }
+        payload.update(extra)
+        return payload
 
     def _execute_readonly_graph(self, request: OrchestrateTaskInput,
                                 nodes: List[WorkGraphNode]) -> Dict[str, Any]:
@@ -661,6 +800,7 @@ class V3Orchestrator:
             "metrics": {
                 "node_count": node_count,
                 "worker_calls": len(results),
+                "repair_count": self._repair_count(results),
                 "estimated_savings_percent": 0,
                 "worker_participation_percent": self._participation_percent(
                     len(completed_worker_results),
@@ -692,6 +832,12 @@ class V3Orchestrator:
                                codex_blocked_actions: int = 0) -> int:
         total = max(1, worker_planned + codex_blocked_actions)
         return round(worker_completed * 100 / total)
+
+    def _repair_count(self, results: List[Dict[str, Any]]) -> int:
+        return sum(
+            1 for item in results
+            if item.get("repair_of") or item.get("lint_repair_of")
+        )
 
     def _handoff_payload(self, status: str, summary: str, results: List[Dict[str, Any]],
                          blocked_actions: List[str], codex_next_actions: List[str]) -> Dict[str, Any]:
@@ -769,3 +915,8 @@ def _specialist_constraints(specialist_name: str) -> List[str]:
             "Prefer minimal reviewable changes and avoid unrelated refactors.",
         ]
     return []
+
+
+def _is_python_test_file(path: str) -> bool:
+    normalized = path.replace("\\", "/")
+    return normalized.startswith("tests/test_") and normalized.endswith(".py")

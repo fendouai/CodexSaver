@@ -72,8 +72,9 @@ Goal: make node-level repair loops practical and bounded.
 
 - [x] Add per-node repair budget
 - [x] Feed compact verifier failures back into the same specialist
-- [ ] Track repair counts in metrics
+- [x] Track repair counts in metrics
 - [x] Add tests for apply failure -> repair success
+- [x] Add tests for lint repair -> success
 - [ ] Add tests for retry exhaustion -> `needs_codex`
 
 Acceptance:
@@ -91,7 +92,8 @@ Goal: measure whether v3 is actually better than v2.
 - [ ] Add persistent benchmark ledger format
 - [x] Add v3 benchmark runner
 - [ ] Compare Codex-only vs v2 vs v3
-- [ ] Track worker count, repair count, latency, merge conflicts
+- [x] Track worker count, repair count, latency, merge conflicts
+- [x] Add deterministic patch-success benchmark for lint repair and `test_writer` validation
 - [ ] Track Codex rewrite rate after aggregation
 
 Acceptance:

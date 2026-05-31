@@ -850,6 +850,26 @@ Before aggregation, CodexSaver runs patch lint:
 Failed patch nodes should get a bounded node-level repair attempt before the
 whole graph returns `needs_codex`.
 
+Repairable patch-lint failures should get the same bounded node-level retry:
+
+- `changed_files` mismatch
+- missing `verification_plan`
+- missing `rollback_notes`
+- patch apply failure during lint replay
+- specialist-specific metadata failures such as weak `test_writer` verification
+
+Non-repairable failures, such as duplicate file writes inside the same batch,
+should still return `needs_codex` immediately.
+
+`test_writer` should be stricter than generic patch nodes:
+
+- Python tests must modify at least one `tests/test_*.py` file
+- `verification_plan` must include the exact generated test file in a `pytest` command
+- `rollback_notes` must explain how to delete or revert the generated test file
+
+Worker metrics should include `repair_count` so benchmarks can distinguish
+first-pass patch success from bounded repair success.
+
 ### 22.2 Agent Card Discovery
 
 v3.6 uses Agent Card files as the minimal worker registration format.
@@ -912,6 +932,15 @@ That gives CodexSaver a durable architecture:
 - Pi Agent and local workers do more real work
 - verification keeps the system honest
 - metrics decide whether the orchestration is actually better
+
+For the next patch-success phase, the most important proof is not just readonly
+throughput. It is whether bounded patch workers can recover from fixable output
+mistakes without losing safety. That means:
+
+- repairable lint failures should be retried locally, not escalated immediately
+- `test_writer` should have hard validation for file path, pytest command, and rollback
+- duplicate writes and unsafe patches should remain blocked
+- benchmark reports should measure both write success rate and verified outcome rate
 
 **Final slogan**
 

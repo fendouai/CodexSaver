@@ -9,9 +9,11 @@
 ![CodexSaver](./CodexSaver.png)
 
 CodexSaver is an MCP tool that turns Codex into a cost-aware router.
-It pushes low-risk development work to a cheaper worker LLM, keeps high-risk
-judgment in Codex, and returns enough interaction detail that you can feel when
-the tool is active.
+Its current product story is intentionally narrow:
+
+- win first on readonly specialists such as explanation, search, and review
+- win second on bounded, verifiable patch work
+- keep risky judgment and final review in Codex
 
 - Lower-cost execution for tests, docs, search, and explanation work
 - Codex stays responsible for architecture, security, protected domains, and final review
@@ -27,7 +29,7 @@ the tool is active.
 ## At A Glance
 
 CodexSaver is not trying to replace Codex.
-It is trying to **shrink the amount of expensive Codex work** without losing engineering judgment.
+It is trying to **shrink expensive Codex work without losing engineering judgment**.
 
 Current repo-local evidence:
 
@@ -38,25 +40,20 @@ Current repo-local evidence:
 | Quality | v2 bounded work packets passed verifier gates; v3 readonly swarm produced `10` findings with `0.75` quality score |
 | Safety | protected paths, allowlisted commands, sandboxed patch apply, and Codex fallback are built in |
 
-The important nuance:
+The current shape is simple:
 
 - v2 is the mature lane for single bounded tasks
-- v3 is the emerging lane for orchestrated specialists
-- the first clearly established v3 win is **readonly specialist orchestration**
+- v3 is the orchestration lane
+- the clearest proven v3 advantage today is **readonly specialist orchestration**
+- the next proven v3 advantage is **higher patch success through verified repair**
 
 ---
 
 ## Where CodexSaver Wins
 
-CodexSaver is strongest in work that is:
+CodexSaver is strongest when work is low-risk, easy to verify, and expensive for Codex but cheap for a smaller worker.
 
-- low-risk
-- repetitive
-- easy to verify
-- parallelizable
-- expensive for Codex but cheap for a smaller worker
-
-In practice, that means CodexSaver is best at:
+In practice, the strongest lanes are:
 
 - code explanation
 - repository scanning
@@ -65,7 +62,7 @@ In practice, that means CodexSaver is best at:
 - bounded test generation
 - small bounded refactors with explicit file scope
 
-CodexSaver is not strongest at:
+It is not strongest at:
 
 - auth, security, payment, permissions
 - destructive migrations
@@ -73,7 +70,7 @@ CodexSaver is not strongest at:
 - multi-file behavioral changes with weak verification
 - anything that still needs Codex-level judgment at every step
 
-The current product thesis is simple:
+The current product thesis is:
 
 ```text
 CodexSaver wins first on readonly specialist orchestration.
@@ -81,25 +78,24 @@ CodexSaver wins second on bounded, verifiable patch work.
 Codex remains the judge for everything risky or unclear.
 ```
 
-That ordering matters. It matches the current implementation and the current benchmark data.
+That ordering matches both the implementation and the benchmark data.
 
 ---
 
 ## Why It Works
 
-CodexSaver improves cost, speed, and quality through a very specific technical split:
+CodexSaver improves cost, speed, and quality through a small but strict split of responsibilities:
 
 ### 1. Lower Cost
 
-Codex is used for judgment, not repetitive throughput work.
-Cheap worker models handle:
+Codex is used for judgment, not repetitive throughput work. Cheap workers handle:
 
 - explanation
 - docs
 - tests
 - small bounded implementation tasks
 
-That means the expensive model is no longer paying for every routine step.
+This keeps the expensive model away from routine throughput.
 
 ### 2. Higher Speed
 
@@ -123,8 +119,7 @@ sum(all subtask runtimes)
 
 ### 3. Better Quality
 
-CodexSaver does not trust worker output blindly.
-It improves output quality with hard boundaries:
+CodexSaver does not trust worker output blindly. It improves quality with hard boundaries:
 
 - router decides whether the task is safe enough
 - work packet limits the write scope
@@ -136,21 +131,15 @@ That is why CodexSaver can be cheaper **without** becoming a "YOLO auto-edit bot
 
 ---
 
-## Why This Exists
+## Core Split
 
-Most coding sessions contain two very different kinds of work:
-
-- expensive thinking
-- cheap execution
-
-Codex is excellent at the first one. It is overqualified for much of the second.
-
-CodexSaver splits the flow on purpose:
+Most coding sessions mix expensive thinking with cheap execution.
+CodexSaver splits them on purpose:
 
 - `Codex` handles reasoning, ambiguity, protected domains, and approval
 - a configured worker provider handles low-risk throughput work
 
-That gives you a practical pattern:
+The practical rule is:
 
 ```text
 Use the expensive model for judgment.
@@ -256,6 +245,7 @@ Primary references:
 - [v3.4 SWE-style benchmark, 2026-05-17](./docs/benchmarks/v34-swe-benchmark-2026-05-17.md)
 - [v3.6 Agent routing smoke test, 2026-05-19](./docs/benchmarks/v36-agent-routing-smoke-2026-05-19.md)
 - [v3.6 Pi Agent real-task benchmark, 2026-05-19](./docs/benchmarks/v36-pi-agent-benchmark-2026-05-19.md)
+- [v3.6 patch success benchmark, 2026-05-31](./docs/benchmarks/v36-patch-success-benchmark-2026-05-31.md)
 
 Current benchmark status:
 
@@ -297,7 +287,15 @@ Before aggregation, CodexSaver runs patch lint:
 - verifies the patch stays inside allowed files
 - applies the patch in a sandbox before materializing it
 
-If a patch node fails, v3.5 retries that node with repair context instead of throwing away the whole graph immediately. `test_writer` also has stronger rules: plan the test file path, import path, and exact pytest command before returning a patch.
+If a patch node fails, v3.5 retries that node with repair context instead of throwing away the whole graph immediately.
+Repairable patch-lint failures now get the same node-local treatment: CodexSaver can repair a bad `changed_files` declaration, a missing `verification_plan`, or a weak `test_writer` verification plan before returning `needs_codex`.
+`test_writer` also has stronger hard checks now:
+
+- it must change at least one `tests/test_*.py` file for Python
+- `verification_plan` must mention the exact generated test file in a `pytest` command
+- `rollback_notes` must explain how to delete or revert the generated test file
+
+Worker metrics now include `repair_count`, so benchmark reports can show whether patch success came from first-pass output or bounded repair.
 
 ### V3.6: Agent Card Registry And Weighted Routing
 
@@ -763,6 +761,7 @@ Latest v3.6 reports:
 
 - [v3.6 Pi Agent benchmark, 2026-05-19](./docs/benchmarks/v36-pi-agent-benchmark-2026-05-19.md)
 - [v3.6 agent routing smoke, 2026-05-19](./docs/benchmarks/v36-agent-routing-smoke-2026-05-19.md)
+- [v3.6 patch success benchmark, 2026-05-31](./docs/benchmarks/v36-patch-success-benchmark-2026-05-31.md)
 
 Method:
 
@@ -803,6 +802,34 @@ Interpretation:
 - Pi Agent gives CodexSaver a real local worker without hardcoding one model provider into the router
 - Codex still owns final judgment, but CodexSaver can now do the cheap scanning, explaining, and review drafting work first
 - Historical v2 DeepSeek-provider benchmarks remain in `docs/benchmarks/` for comparison, but v3.6's default path is Pi Agent-first orchestration
+
+## V3.6 Patch Success Benchmark
+
+Latest report:
+
+- [v3.6 patch success benchmark, 2026-05-31](./docs/benchmarks/v36-patch-success-benchmark-2026-05-31.md)
+
+Method:
+
+- deterministic orchestration benchmark, not a live model-quality benchmark
+- each scenario replays fixed worker outputs against the current orchestrator
+- the same scenarios are compared against a simulated pre-fix v3.5 baseline
+- this isolates the value of lint repair, stricter `test_writer` validation, and bounded patch recovery
+
+Summary:
+
+- `baseline_write_success_rate`: `0.4`
+- `current_write_success_rate`: `0.8`
+- `baseline_verified_outcome_rate`: `0.2`
+- `current_verified_outcome_rate`: `1.0`
+- `verified_outcome_gain`: `+4 / 5` scenarios
+- `average_repair_count`: `0.8`
+
+Interpretation:
+
+- the biggest practical gain comes from repairing fixable patch-lint failures instead of returning to Codex immediately
+- `test_writer` is stricter in a useful way: weak pytest plans no longer count as acceptable output unless they mention the generated test file exactly
+- duplicate writes still return `needs_codex`; that remained blocked on purpose and counts as preserved safety, not reduced capability
 
 ---
 

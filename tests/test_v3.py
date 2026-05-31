@@ -169,7 +169,8 @@ def test_engine_orchestrate_task_executes_patch_nodes_and_aggregates(tmp_path):
     assert result["metrics"]["patch_nodes"] == 2
 
 
-def test_engine_orchestrate_task_patch_conflict_returns_codex():
+def test_engine_orchestrate_task_patch_conflict_returns_codex(tmp_path):
+    (tmp_path / "README.md").write_text("old\n", encoding="utf-8")
     with patch("codexsaver.orchestrator.PiAgentClient"), \
             patch("codexsaver.orchestrator.WorkPacketRuntime") as MockRuntime, \
             patch("codexsaver.orchestrator.V3Orchestrator._apply_results_to_workspace"), \
@@ -211,7 +212,7 @@ def test_engine_orchestrate_task_patch_conflict_returns_codex():
                 "status": "success",
                 "summary": "doc patch",
                 "changed_files": ["README.md"],
-                "patch": "--- a/README.md\n+++ b/README.md\n@@ -1 +1 @@\n-a\n+b\n",
+                "patch": "--- a/README.md\n+++ b/README.md\n@@ -1 +1 @@\n-old\n+first\n",
                 "checks": [],
                 "verification_plan": ["Review README.md."],
                 "rollback_notes": ["Revert README.md."],
@@ -222,7 +223,7 @@ def test_engine_orchestrate_task_patch_conflict_returns_codex():
                 "status": "success",
                 "summary": "another doc patch",
                 "changed_files": ["README.md"],
-                "patch": "--- a/README.md\n+++ b/README.md\n@@ -1 +1 @@\n-a\n+c\n",
+                "patch": "--- a/README.md\n+++ b/README.md\n@@ -1 +1 @@\n-old\n+second\n",
                 "checks": [],
                 "verification_plan": ["Review README.md."],
                 "rollback_notes": ["Revert README.md."],
@@ -232,7 +233,7 @@ def test_engine_orchestrate_task_patch_conflict_returns_codex():
         result = CodexSaverEngine().orchestrate_task({
             "goal": "Add docs and update README docs",
             "files": ["README.md"],
-            "workspace": ".",
+            "workspace": str(tmp_path),
         })
 
     assert result["status"] == "needs_codex"
@@ -336,6 +337,118 @@ def test_engine_orchestrate_lints_missing_verification_plan(tmp_path):
 
     assert result["status"] == "needs_codex"
     assert "verification_plan" in result["summary"]
+
+
+def test_engine_orchestrate_repairs_lint_failed_changed_files_mismatch(tmp_path):
+    (tmp_path / "README.md").write_text("old\n", encoding="utf-8")
+    with patch("codexsaver.orchestrator.PiAgentClient"), \
+            patch("codexsaver.orchestrator.WorkPacketRuntime") as MockRuntime, \
+            patch("codexsaver.orchestrator.WorkGraphPlanner.plan", return_value=WorkGraph(
+                graph_id="graph-lint-repair",
+                route="single_worker",
+                summary="lint repair graph",
+                nodes=[
+                    WorkGraphNode(
+                        id="docs-1",
+                        type="bounded_patch",
+                        goal="update readme",
+                        depends_on=[],
+                        specialist="doc_writer",
+                        allowed_files=["README.md"],
+                        forbidden_paths=[],
+                        allowed_commands=[],
+                        acceptance_criteria=[],
+                        mode="bounded_patch",
+                    ),
+                ],
+            )):
+        runtime = MockRuntime.return_value
+        runtime.run.side_effect = [
+            {
+                "route": "pi_agent",
+                "status": "success",
+                "summary": "doc patch with bad metadata",
+                "changed_files": ["NOT_README.md"],
+                "patch": "--- a/README.md\n+++ b/README.md\n@@ -1 +1 @@\n-old\n+new\n",
+                "checks": [],
+                "verification_plan": ["Review README.md."],
+                "rollback_notes": ["Revert README.md."],
+                "risk_notes": [],
+            },
+            {
+                "route": "pi_agent",
+                "status": "success",
+                "summary": "repaired doc patch",
+                "changed_files": ["README.md"],
+                "patch": "--- a/README.md\n+++ b/README.md\n@@ -1 +1 @@\n-old\n+new\n",
+                "checks": [],
+                "verification_plan": ["Review README.md."],
+                "rollback_notes": ["Revert README.md."],
+                "risk_notes": [],
+            },
+        ]
+        result = CodexSaverEngine().orchestrate_task({
+            "goal": "Update README docs",
+            "files": ["README.md"],
+            "workspace": str(tmp_path),
+        })
+
+    assert result["status"] == "success"
+    assert result["results"][0]["lint_repair_of"]["changed_files"] == ["NOT_README.md"]
+    assert result["metrics"]["repair_count"] == 1
+
+
+def test_engine_orchestrate_lints_test_writer_missing_exact_pytest_command(tmp_path):
+    target_dir = tmp_path / "tests"
+    target_dir.mkdir()
+    with patch("codexsaver.orchestrator.PiAgentClient"), \
+            patch("codexsaver.orchestrator.WorkPacketRuntime") as MockRuntime, \
+            patch("codexsaver.orchestrator.WorkGraphPlanner.plan", return_value=WorkGraph(
+                graph_id="graph-test-writer-lint",
+                route="single_worker",
+                summary="test writer lint graph",
+                nodes=[
+                    WorkGraphNode(
+                        id="tests-1",
+                        type="bounded_patch",
+                        goal="add parser tests",
+                        depends_on=[],
+                        specialist="test_writer",
+                        allowed_files=["tests/test_config_parser.py"],
+                        forbidden_paths=[],
+                        allowed_commands=[],
+                        acceptance_criteria=[],
+                        mode="bounded_patch",
+                    ),
+                ],
+            )):
+        runtime = MockRuntime.return_value
+        runtime.run.return_value = {
+            "route": "pi_agent",
+            "status": "success",
+            "summary": "added tests",
+            "changed_files": ["tests/test_config_parser.py"],
+            "patch": (
+                "diff --git a/tests/test_config_parser.py b/tests/test_config_parser.py\n"
+                "new file mode 100644\n"
+                "--- /dev/null\n"
+                "+++ b/tests/test_config_parser.py\n"
+                "@@ -0,0 +1 @@\n"
+                "+def test_config_parser():\n"
+            ),
+            "checks": [],
+            "verification_plan": ["python -m pytest -q"],
+            "rollback_notes": ["Delete tests/test_config_parser.py."],
+            "risk_notes": [],
+        }
+        result = CodexSaverEngine().orchestrate_task({
+            "goal": "Add config parser tests",
+            "files": ["tests/test_config_parser.py"],
+            "workspace": str(tmp_path),
+        })
+
+    assert result["status"] == "needs_codex"
+    assert "generated test file" in result["summary"]
 
 
 def test_work_graph_planner_splits_database_write_into_safe_prep_nodes():
